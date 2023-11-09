@@ -1,0 +1,150 @@
+CHECKPOINT 3.1
+
+Description: The keyboard interrupt handler was printing twice to the screen, once with the character, and right after with a space. 
+Where: keyboard.c
+Issue: Releasing a key also counts as a keypress, which was causing it to register twice. 
+Solution: We added an if-statment to check if the keyboard press data byte was a release key, and if it was, we did not register it.
+
+Description: After fixing the bug above, the keyboard was not displaying values to the screen.
+Where: keyboard.c 
+Issue: After checking if the keypress was not valid and returning, I forgot to set the interrupt flag and send_eoi.
+Solution: Added a sti() and send_eoi(1) so that the interrupts would properly be addressed after a keypress.  
+
+Description: The RTC handler was not properly being accessed and would not work with the tests in lib.causing
+Where: rtc.c, i8259.c 
+Issue: The secondary PIC was not being properly enabled
+Solution: We enabled_irq(2) in i8259_init so that the secondary PIC was being properly enabled
+
+Description: When the keys were being stressed tested (spammed), there would be a General Protection Exception raised.
+Where: keyboard.c, intr_link.S 
+Issue: The assembly linkage was not being done correctly which caused issues with the keyboard
+Solution: We fixed the intr_link.S by adding an iret statement.
+
+Description: Addresses allocated are not correct
+Where: paging.c
+Issue: page_directory array does not allocate to correct page_table addresses. We think this is because there are not enough bits for the address
+Solution: We divided the addresses by ALIGN_BYTES (4kb).
+
+Description: test_debug goes back to its starting screen whenever paging_init() is called
+Where: kernel.c, paging.c
+Issue: After investigating, we found out there are only 31 bits allocated in the page directory struct.
+Solution: We added a bit called "unused" to fill the 32-bit page directory struct.
+
+CHECKPOINT 3.2
+
+Description: directory_read does not put the correct file type and file size in the dentry
+Where: fs_system.c
+Issue: INode addresses are not calculated correctly.
+Solution: After updating some code (specifically this line: startINode = (INode_t *)(fs_start + FOURKB)) we can print out some file sizes (but the sizes are not correct).
+Then we shifted the inode numbers by three and now we are able to print the correct file sizes.
+
+Description: read_data does not work properly. 
+Where: fs_system.c
+Issue: INode addresses are not calculated correctly, while loop is causing problems (# of bytes read is not updated properly), writing to the wrong buffer address 
+(should be buf + bytes)
+Solution: as of 3/28 4pm we haven't solved the issue yet.
+
+
+Description: cursor was not properly following after the backspace character
+Where: lib.c
+Issue: Since I was using a ' ' character to clear the character to be deleted by backspace, screen_x and screen_y were not being properly displayed. 
+Solution: I directly used backspace to edit the video memory to properly allocate space for backspace. 
+
+Description: texts are not printed out with different frequencies.
+Where: rtc.c
+Issue: When we ran the test, there is only one '1' appeared on the screen.
+Solution: Dereference the right address in the list.
+
+Description: terminal overflow. when typing more than 80 characters into the terminal, a new line is supposed to appear to display the extra characters. However, the entire
+	line is printed out on the second line.
+Where: terminal.c, lib.c, keyboard.c
+Issue: The keyboard handler is printing the entire buffer on the new line, even after we switched lines. In other words, we switched to a new line but did not clear the 
+	buffer.
+Solution: By using a second buffer to store the extra characters, we can print out only the second line's content while also saving the first line's content.
+
+
+3.3 
+Description: After calling shell we were not able to backspace and get a proper input. For example if you types ls, deleted the s ad then typed it again it wouldnt execute 
+Where: terminal.c 
+Issue buffer was getting filled with a /b
+Solution: Make the buffer only have typed characters
+
+Description: After halting it would go to execute but page fault 
+Where: systemcalls.c 
+Issue: I was calling a leave and ret after my label in execute which was doing assembly instructions it shouldnt have 
+Solution: Remove leave and ret after the label 
+
+
+Description: Interrupts were off after shell were called 
+Where: systemcalls.c 
+Issue: We needed to re eable interrupts after our linkage or else keyboard ones wont be added 
+Solution:  ^ 
+
+3.4 
+
+Description: We are unable to use backspace after reaching the max capacity of the keyboard buffer.
+Where: keyboard.c, lib.c 
+Issue: We treated backspace as a character in the buffer '\n' so it would require a space in the buffer to work as intended. However, this made it so that once you reached 128 characters, you could no longer backspace as the buffer was full.
+Solution: We rewrote the functionality of backspace by using a flag instead to detected if backspace was pressed, so it would not require a space in the buffer. 
+
+Bug: syserr Fails 5 tests and page faults at the end. Tests that faul: empty string, open, invalid fd, unopened 
+Where: Systemcalls.c 
+Issue: 
+Was doing a null check on a pointer instead of a null check on a character
+Rest of the issue sstemmed from an incorrect macro. FD's were looping through 0-6 instead of 0-7 
+Fix: Do better edge case checks and fix macros 
+
+Bug: After trying to read an executable and then calling pingpong it restarts the kernel and you can no longer run any functions
+Steps to recreate: 
+1. do "cat shell" (cat any executable)
+2. run pingpong 
+After it re runs it bootloops on any command 
+Can call cat on a non executable and it wont boot loop 
+
+
+Bug: Pingpong does not work. Only prints 2 lines and has spaces between them. In GDB it works until the last line and then seg faults
+Where: lib.c 
+Issue: There was an issue with scrolling that prevented the ping pongs from drawing correctly.
+Solution: We were not correctly implementing scrolling as the text was constantly getting overwritten. I added some edge cases to help fix that problem. 
+
+Bug: Kernel restarts when max characters reached 
+Where: idk yet(prolly terminal read/write )
+Issue: If you type the maximum characters you can in shell, then hit ennter once, the next time you hit enter it will restart the cpu or in our case kernel 
+Solution: SOMEONE FIX THIS
+
+Bug: Cat rtc does not stop before returning to the control of the shell
+Where: rtc.c
+Issue: Absence of virtualization, which does not constantly change the rate before the interrupt flag is set.
+Solution: Virtualize the rtc.
+
+Bug: Characters were not being properly displayed when the terminals were being swithed.
+Where: keyboard.c 
+Issue: The buffers were being overwritten with '\0.' It turns out that this was happening because the indexes of the characters were not being correctly updated within the buffers after terminals were being switched. 
+Solution: Add an index flag and separate index counters for each terminal. 
+
+3.5
+
+Bug: Switching between terminals when fish is running is continuing to run fish on every terminal that is switched to (When put it is turned off)
+Where: scheduling.c
+Why: Vidmap is not being scheduled properly
+Fix: Not yet 
+
+Bug: When running counter afte switching terminals, counter continues to run on that terminal
+Where: scheduling.c
+Issue: The current process is still being mapped to 0x0B800 when it should be sending to its respective branch when we switch 
+Fix: Not fixed 
+
+Bug: After implementing scheduling with PIT, we cannot type on the terminal
+Where: scheduling.c
+Issue: A small bug; We are saving the wrong esp/ebp in asm.
+Solution: Change the ebp we are saving to to ((pcb_t *)pcb)->task_ebp and likewise for esp.
+
+Bug: After implementing scheduling with PIT, terminal cannot run more than one program (also causes a lot of bugs such as page fault and incorrect cursor location)
+Where: scheduling.c
+Issue: The asm is still not saving the correct values for esp and ebp.
+Solution: We have not found a solution
+
+Bug: Multiple terminals would not save the keyboard input properly.
+Where: keyboard.c 
+Issue: the keyboard and terminal buffers were getting overwritten.
+Solution: We created separate buffers for each terminal so that it wouldn't get overwritten everytime we switched terminals.
